@@ -11,12 +11,6 @@ pipeline {
 
   stages {
 
-    stage('Checkout') {
-      steps {
-        git 'https://github.com/Faizansayani533/devsecops-demo.git'
-      }
-    }
-
     stage('Build') {
       steps {
         sh 'mvn clean package -DskipTests'
