@@ -20,14 +20,16 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
         withSonarQubeEnv('sonarqube') {
-          sh """
+          sh '''
+          export SONAR_SCANNER_OPTS="-Xmx1024m"
           $SONAR_SCANNER_HOME/bin/sonar-scanner \
           -Dsonar.projectKey=devsecops-demo \
           -Dsonar.sources=. \
           -Dsonar.java.binaries=target
-          """
+          '''
         }
       }
     }
+
   }
 }
