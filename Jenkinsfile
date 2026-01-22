@@ -65,16 +65,11 @@ stage('Deploy to EKS') {
   steps {
     container('kubectl') {
       sh '''
-        echo "📌 Using namespace: default"
-        kubectl get deployment devsecops-demo -n default
-
-        echo "🚀 Updating image..."
         kubectl set image deployment/devsecops-demo \
           devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
           -n default
 
-        echo "⏳ Waiting for rollout..."
-        kubectl rollout status deployment/devsecops-demo -n default
+        kubectl rollout status deployment/devsecops-demo -n default --timeout=120s
       '''
         }
       }
