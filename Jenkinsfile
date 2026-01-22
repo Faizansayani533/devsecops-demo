@@ -63,8 +63,9 @@ pipeline {
 
     stage('Deploy to EKS') {
       steps {
-        container('maven') {
+        container('kubectl') {
           sh '''
+	    kubectl get nodes
             kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
             kubectl rollout status deployment/devsecops-demo
           '''
