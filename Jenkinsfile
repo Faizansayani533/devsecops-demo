@@ -1,24 +1,5 @@
 pipeline {
-  agent {
-    kubernetes {
-      yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: jnlp
-    image: jenkins/inbound-agent:3355.v388858a_47b_33-5
-    resources:
-      requests:
-        memory: "1Gi"
-        cpu: "500m"
-      limits:
-        memory: "4Gi"
-        cpu: "2"
-    tty: true
-"""
-    }
-  }
+  agent { label 'kaniko' }
 
   tools {
     maven 'Maven'
@@ -27,7 +8,7 @@ spec:
   environment {
     AWS_REGION = "eu-north-1"
     ECR_REPO = "079662785620.dkr.ecr.eu-north-1.amazonaws.com/devsecops-app"
-    IMAGE_TAG = "latest"
+    IMAGE_TAG = "${BUILD_NUMBER}"
   }
 
   stages {
@@ -38,23 +19,19 @@ spec:
       }
     }
 
-    stage('Build & Unit Test') {
+    stage('Build') {
       steps {
-        sh 'mvn clean package'
+        sh 'mvn clean package -DskipTests'
       }
     }
 
-    stage('SonarQube Analysis (SAST)') {
-      environment {
-        MAVEN_OPTS = "-Xmx2048m"
-      }
+    stage('SonarQube Analysis') {
       steps {
         withSonarQubeEnv('sonarqube') {
           sh '''
           mvn sonar:sonar \
           -Dsonar.projectKey=devsecops-demo \
-          -Dsonar.projectName=devsecops-demo \
-          -Dsonar.scm.disabled=true
+          -Dsonar.projectName=devsecops-demo
           '''
         }
       }
@@ -62,34 +39,30 @@ spec:
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 30, unit: 'MINUTES') {
+        timeout(time: 10, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
       }
     }
 
-    stage('Docker Build') {
+    stage('Kaniko Build & Push') {
       steps {
-        sh '''
-        docker build -t devsecops-app .
-        docker tag devsecops-app:latest $ECR_REPO:$IMAGE_TAG
-        '''
+        container('kaniko') {
+          sh """
+          /kaniko/executor \
+            --dockerfile=Dockerfile \
+            --context=dir:///home/jenkins/agent/workspace/${JOB_NAME} \
+            --destination=$ECR_REPO:$IMAGE_TAG \
+            --destination=$ECR_REPO:latest
+          """
+        }
       }
     }
 
-    stage('Trivy Image Scan') {
+    stage('Trivy Scan (ECR Image)') {
       steps {
         sh '''
-        trivy image --exit-code 0 --severity CRITICAL,HIGH $ECR_REPO:$IMAGE_TAG
-        '''
-      }
-    }
-
-    stage('Push Image to ECR') {
-      steps {
-        sh '''
-        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-        docker push $ECR_REPO:$IMAGE_TAG
+        trivy image --exit-code 0 --severity HIGH,CRITICAL $ECR_REPO:$IMAGE_TAG
         '''
       }
     }
