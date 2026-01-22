@@ -9,10 +9,6 @@ pipeline {
     SONARQUBE    = "sonarqube"
   }
 
-  tools {
-    maven "Maven3"
-  }
-
   stages {
 
     stage('Checkout Code') {
@@ -52,8 +48,6 @@ pipeline {
       steps {
         container('kaniko') {
           sh '''
-            echo "Setting ECR auth..."
-
             mkdir -p /kaniko/.docker
 
             cat <<EOF > /kaniko/.docker/config.json
@@ -92,11 +86,7 @@ EOF
   }
 
   post {
-    success {
-      echo "✅ PIPELINE SUCCESSFUL"
-    }
-    failure {
-      echo "❌ PIPELINE FAILED"
-    }
+    success { echo "✅ PIPELINE SUCCESSFUL" }
+    failure { echo "❌ PIPELINE FAILED" }
   }
 }
