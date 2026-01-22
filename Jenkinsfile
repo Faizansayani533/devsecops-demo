@@ -1,39 +1,42 @@
 pipeline {
-  agent any
-
-  tools {
-    maven 'Maven'
-  }
+  agent { label 'kaniko' }
 
   environment {
-    AWS_REGION = "eu-north-1"
-    ECR_REPO = "079662785620.dkr.ecr.eu-north-1.amazonaws.com/devsecops-app"
-    IMAGE_TAG = "latest"
+    AWS_REGION   = "eu-north-1"
+    ECR_REGISTRY = "079662785620.dkr.ecr.eu-north-1.amazonaws.com"
+    IMAGE_NAME   = "devsecops-demo"
+    IMAGE_TAG    = "${BUILD_NUMBER}"
+    SONARQUBE    = "sonarqube"
+  }
+
+  tools {
+    maven "Maven3"
   }
 
   stages {
 
-    stage('Checkout') {
+    stage('Checkout Code') {
       steps {
-        checkout scm
+        git url: 'https://github.com/Faizansayani533/devsecops-demo.git', branch: 'main'
       }
     }
 
-    stage('Build') {
+    stage('Maven Build & Test') {
       steps {
-        sh 'mvn clean package -DskipTests'
+        sh "mvn clean verify"
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv('sonarqube') {
-          sh '''
+        withSonarQubeEnv("${SONARQUBE}") {
+          sh """
           mvn sonar:sonar \
           -Dsonar.projectKey=devsecops-demo \
           -Dsonar.projectName=devsecops-demo \
-          -Dsonar.scm.disabled=true
-          '''
+          -Dsonar.host.url=$SONAR_HOST_URL \
+          -Dsonar.login=$SONAR_AUTH_TOKEN
+          """
         }
       }
     }
@@ -46,47 +49,67 @@ pipeline {
       }
     }
 
-    stage('Docker Build') {
+    /* ========== OPTIONAL (NVD ERROR AATA HAI ISLIYE OFF) ==========
+    stage('OWASP Dependency Check') {
       steps {
-        sh '''
-        docker build -t devsecops-app .
-        docker tag devsecops-app:latest $ECR_REPO:$IMAGE_TAG
-        '''
+        dependencyCheck additionalArguments: '--scan .', odcInstallation: 'Default'
+        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+      }
+    }
+    ================================================================ */
+
+    stage('Build & Push Image (Kaniko → ECR)') {
+      steps {
+        container('kaniko') {
+          sh '''
+            echo "Configuring ECR auth..."
+            mkdir -p /kaniko/.docker
+
+            cat <<EOF > /kaniko/.docker/config.json
+            {
+              "credHelpers": {
+                "079662785620.dkr.ecr.eu-north-1.amazonaws.com": "ecr-login"
+              }
+            }
+EOF
+
+            echo "Building & pushing image..."
+
+            /kaniko/executor \
+              --context $WORKSPACE \
+              --dockerfile $WORKSPACE/Dockerfile \
+              --destination $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
+              --destination $ECR_REGISTRY/$IMAGE_NAME:latest \
+              --skip-tls-verify
+          '''
+        }
       }
     }
 
     stage('Trivy Image Scan') {
       steps {
-        sh '''
-        trivy image --exit-code 0 --severity HIGH,CRITICAL $ECR_REPO:$IMAGE_TAG || true
-        '''
-      }
-    }
-
-    stage('Push to ECR') {
-      steps {
-        sh '''
-        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 079662785620.dkr.ecr.eu-north-1.amazonaws.com
-        docker push $ECR_REPO:$IMAGE_TAG
-        '''
+        sh """
+        trivy image $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG || true
+        """
       }
     }
 
     stage('Deploy to EKS') {
       steps {
-        sh '''
-        kubectl apply -f k8s/
-        '''
+        sh """
+        kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG -n default
+        kubectl rollout status deployment/devsecops-demo -n default
+        """
       }
     }
   }
 
   post {
     success {
-      echo "✅ FULL DEVSECOPS PIPELINE SUCCESS"
+      echo "✅ PIPELINE SUCCESSFUL – APP DEPLOYED"
     }
     failure {
-      echo "❌ PIPELINE FAILED"
+      echo "❌ PIPELINE FAILED – CHECK LOGS"
     }
   }
 }
