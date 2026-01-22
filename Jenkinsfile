@@ -4,7 +4,7 @@ pipeline {
   environment {
     AWS_REGION   = "eu-north-1"
     ECR_REGISTRY = "079662785620.dkr.ecr.eu-north-1.amazonaws.com"
-    IMAGE_NAME   = "devsecops-demo"
+    IMAGE_NAME   = "devsecops-app"
     IMAGE_TAG    = "${BUILD_NUMBER}"
     SONARQUBE    = "sonarqube"
   }
