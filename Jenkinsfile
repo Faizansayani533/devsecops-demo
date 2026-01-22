@@ -97,21 +97,19 @@ stage('Trivy Image Scan') {
   steps {
     container('trivy') {
       sh '''
-        # Scan and generate JSON (fail on CRITICAL)
+        echo "📥 Downloading Trivy HTML template..."
+        curl -sSL -o trivy-html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+
+        echo "🔍 Scanning image (fail on CRITICAL)..."
         trivy image \
+          --scanners vuln \
           --severity CRITICAL \
           --exit-code 1 \
           --no-progress \
-          --format json \
-          --output trivy-report.json \
-          $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-
-        # Convert JSON to HTML report
-        trivy convert \
           --format template \
-          --template "@builtin/html.tpl" \
+          --template "@trivy-html.tpl" \
           --output trivy-report.html \
-          trivy-report.json
+          $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
       '''
         }
       }
