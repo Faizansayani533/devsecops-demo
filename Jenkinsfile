@@ -65,9 +65,13 @@ pipeline {
       steps {
         container('kubectl') {
           sh '''
-	    kubectl get nodes
-            kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-            kubectl rollout status deployment/devsecops-demo
+		set -x
+        	which kubectl
+        	kubectl version --client
+        	kubectl get nodes
+        	kubectl get deployment -A
+        	kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        	kubectl rollout status deployment/devsecops-demo --timeout=120s
           '''
         }
       }
