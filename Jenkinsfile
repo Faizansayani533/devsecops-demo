@@ -47,6 +47,26 @@ pipeline {
       }
     }
 
+    // =======================
+    // OWASP DEPENDENCY CHECK
+    // =======================
+    stage('OWASP Dependency Check') {
+      steps {
+        container('dependency-check') {
+          sh '''
+            mkdir -p /home/jenkins/agent/dc-report
+
+            /usr/share/dependency-check/bin/dependency-check.sh \
+              --project "devsecops-demo" \
+              --scan /home/jenkins/agent \
+              --format "HTML" \
+              --out /home/jenkins/agent/dc-report \
+              --disableAssembly
+          '''
+        }
+      }
+    }
+
     stage('Kaniko Build & Push (ECR)') {
       steps {
         container('kaniko') {
@@ -61,35 +81,51 @@ pipeline {
       }
     }
 
-stage('Install kubectl') {
-  steps {
-    sh '''
-      if [ ! -f /home/jenkins/bin/kubectl ]; then
-        echo "Installing kubectl..."
-        curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
-        chmod +x kubectl
-        mkdir -p /home/jenkins/bin
-        mv kubectl /home/jenkins/bin/
-      fi
+    // =======================
+    // TRIVY IMAGE SCAN
+    // =======================
+    stage('Trivy Image Scan') {
+      steps {
+        container('trivy') {
+          sh '''
+            trivy image \
+              --severity HIGH,CRITICAL \
+              --no-progress \
+              $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG || true
+          '''
+        }
+      }
+    }
 
-      /home/jenkins/bin/kubectl version --client
-    '''
-  }
-}
+    stage('Install kubectl') {
+      steps {
+        sh '''
+          if [ ! -f /home/jenkins/bin/kubectl ]; then
+            echo "Installing kubectl..."
+            curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+            chmod +x kubectl
+            mkdir -p /home/jenkins/bin
+            mv kubectl /home/jenkins/bin/
+          fi
 
-stage('Deploy to EKS') {
-  steps {
-    sh '''
-      echo "Updating deployment..."
+          /home/jenkins/bin/kubectl version --client
+        '''
+      }
+    }
 
-      /home/jenkins/bin/kubectl set image deployment/devsecops-demo \
-        devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
-        -n default
+    stage('Deploy to EKS') {
+      steps {
+        sh '''
+          echo "Updating deployment..."
 
-      echo "Waiting for rollout..."
+          /home/jenkins/bin/kubectl set image deployment/devsecops-demo \
+            devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
+            -n default
 
-      /home/jenkins/bin/kubectl rollout status deployment/devsecops-demo -n default --timeout=120s
-    '''
+          echo "Waiting for rollout..."
+
+          /home/jenkins/bin/kubectl rollout status deployment/devsecops-demo -n default --timeout=120s
+        '''
       }
     }
   }
