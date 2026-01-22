@@ -93,14 +93,13 @@ pipeline {
     // =======================
     // TRIVY IMAGE SCAN
     // =======================
+
 stage('Trivy Image Scan') {
   steps {
     container('trivy') {
       sh '''
-        echo "📥 Downloading Trivy HTML template..."
-        curl -sSL -o trivy-html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+        echo "🔍 Trivy CRITICAL vulnerability scan..."
 
-        echo "🔍 Scanning image (fail on CRITICAL)..."
         trivy image \
           --scanners vuln \
           --severity CRITICAL \
@@ -110,8 +109,7 @@ stage('Trivy Image Scan') {
           --template "@trivy-html.tpl" \
           --output trivy-report.html \
           $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-      '''
-        }
+      '''        }
       }
     }
 
