@@ -11,18 +11,12 @@ pipeline {
 
   stages {
 
-    // =======================
-    // CHECKOUT
-    // =======================
     stage('Checkout') {
       steps {
         checkout scm
       }
     }
 
-    // =======================
-    // MAVEN BUILD & TEST
-    // =======================
     stage('Maven Build & Test') {
       steps {
         container('maven') {
@@ -31,9 +25,6 @@ pipeline {
       }
     }
 
-    // =======================
-    // SONARQUBE SCAN
-    // =======================
     stage('SonarQube Analysis') {
       steps {
         container('maven') {
@@ -48,9 +39,6 @@ pipeline {
       }
     }
 
-    // =======================
-    // QUALITY GATE
-    // =======================
     stage('Quality Gate') {
       steps {
         timeout(time: 10, unit: 'MINUTES') {
@@ -67,14 +55,15 @@ pipeline {
         container('dependency-check') {
           withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
             sh '''
-              rm -rf dc-report
-              mkdir -p dc-report
+              rm -rf /tmp/dc-report
+              mkdir -p /tmp/dc-report
 
               /usr/share/dependency-check/bin/dependency-check.sh \
                 --project "devsecops-demo" \
-                --scan . \
+                --scan target \
+                --scan pom.xml \
                 --format HTML \
-                --out dc-report \
+                --out /tmp/dc-report \
                 --disableAssembly \
                 --nvdApiKey $NVD_API_KEY \
                 --failOnCVSS 9
@@ -108,14 +97,12 @@ pipeline {
       steps {
         container('trivy') {
           sh '''
-            rm -f trivy-report.html
-
             trivy image \
               --severity CRITICAL \
               --exit-code 1 \
               --no-progress \
               --format template \
-              --template "@/contrib/html.tpl" \
+              --template "@contrib/html.tpl" \
               --output trivy-report.html \
               $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
           '''
@@ -130,7 +117,6 @@ pipeline {
       steps {
         sh '''
           if [ ! -f /home/jenkins/bin/kubectl ]; then
-            echo "Installing kubectl..."
             curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
             chmod +x kubectl
             mkdir -p /home/jenkins/bin
@@ -154,8 +140,8 @@ pipeline {
             devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
             -n default
 
-          echo "Waiting for rollout..."
-          /home/jenkins/bin/kubectl rollout status deployment/devsecops-demo -n default --timeout=180s
+          /home/jenkins/bin/kubectl rollout status deployment/devsecops-demo \
+            -n default --timeout=180s
         '''
       }
     }
@@ -165,11 +151,12 @@ pipeline {
     // =======================
     stage('Publish Security Reports') {
       steps {
+
         publishHTML([
           allowMissing: true,
           alwaysLinkToLastBuild: true,
           keepAll: true,
-          reportDir: 'dc-report',
+          reportDir: '/tmp/dc-report',
           reportFiles: 'dependency-check-report.html',
           reportName: 'OWASP Dependency Check Report'
         ])
