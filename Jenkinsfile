@@ -61,11 +61,24 @@ pipeline {
       }
     }
 
-    stage('Deploy to EKS') {
-      steps {
-        container('kubectl') {
-		sh 'echo HELLO_FROM_KUBECTL'
-      		sh 'kubectl get nodes'
+stage('Deploy to EKS') {
+  steps {
+    container('maven') {
+      sh '''
+        echo "Installing kubectl..."
+        curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+        chmod +x kubectl
+        mv kubectl /usr/local/bin/kubectl
+
+        echo "Kubectl version:"
+        kubectl version --client
+
+        echo "Cluster nodes:"
+        kubectl get nodes
+
+        kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        kubectl rollout status deployment/devsecops-demo
+      '''
         }
       }
     }
