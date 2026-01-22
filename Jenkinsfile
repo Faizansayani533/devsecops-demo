@@ -11,16 +11,15 @@ pipeline {
 
   stages {
 
-    stage('Checkout Code') {
+    stage('Checkout') {
       steps {
-        checkout scm
+        git branch: 'main', url: 'https://github.com/Faizansayani533/devsecops-demo.git'
       }
     }
 
     stage('Maven Build & Test') {
       steps {
         container('maven') {
-          sh 'mvn -v'
           sh 'mvn clean verify'
         }
       }
@@ -30,11 +29,11 @@ pipeline {
       steps {
         container('maven') {
           withSonarQubeEnv("${SONARQUBE}") {
-            sh """
+            sh '''
               mvn sonar:sonar \
               -Dsonar.projectKey=devsecops-demo \
               -Dsonar.projectName=devsecops-demo
-            """
+            '''
           }
         }
       }
@@ -48,19 +47,7 @@ pipeline {
       }
     }
 
-	stage('KANIKO-SHELL-TEST') {
-  steps {
-    container('kaniko') {
-      sh 'echo "I am inside kaniko container"'
-      sh 'ls -l /'
-      sh 'ls -l /kaniko'
-      sh 'ls -l /workspace'
-    }
-  }
-}
-
-
-    stage('Build & Push Image (Kaniko → ECR)') {
+    stage('Kaniko Build & Push') {
       steps {
         container('kaniko') {
           sh '''
@@ -78,25 +65,20 @@ EOF
               --context $WORKSPACE \
               --dockerfile $WORKSPACE/Dockerfile \
               --destination $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
-              --destination $ECR_REGISTRY/$IMAGE_NAME:latest \
-              --skip-tls-verify
+              --destination $ECR_REGISTRY/$IMAGE_NAME:latest
           '''
         }
       }
     }
 
-    stage('Trivy Image Scan') {
-      steps {
-        sh "trivy image $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG || true"
-      }
-    }
-
     stage('Deploy to EKS') {
       steps {
-        sh '''
-          kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-          kubectl rollout status deployment/devsecops-demo
-        '''
+        container('maven') {
+          sh '''
+            kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+            kubectl rollout status deployment/devsecops-demo
+          '''
+        }
       }
     }
   }
