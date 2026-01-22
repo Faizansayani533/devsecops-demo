@@ -53,17 +53,20 @@ pipeline {
     stage('OWASP Dependency Check') {
       steps {
         container('dependency-check') {
-          sh '''
-            mkdir -p dc-report
+          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+            sh '''
+              mkdir -p dc-report
 
-            /usr/share/dependency-check/bin/dependency-check.sh \
-              --project "devsecops-demo" \
-              --scan . \
-              --format HTML \
-              --out dc-report \
-              --disableAssembly \
-              --failOnCVSS 9
-          '''
+              /usr/share/dependency-check/bin/dependency-check.sh \
+                --project "devsecops-demo" \
+                --scan . \
+                --format HTML \
+                --out dc-report \
+                --disableAssembly \
+                --nvdApiKey $NVD_API_KEY \
+                --failOnCVSS 9
+            '''
+          }
         }
       }
     }
