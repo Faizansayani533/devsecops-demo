@@ -93,19 +93,26 @@ pipeline {
     // =======================
     // TRIVY IMAGE SCAN
     // =======================
-    stage('Trivy Image Scan') {
-      steps {
-        container('trivy') {
-          sh '''
-            trivy image \
-              --severity CRITICAL \
-              --exit-code 1 \
-              --no-progress \
-              --format template \
-              --template "@contrib/html.tpl" \
-              --output trivy-report.html \
-              $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-          '''
+stage('Trivy Image Scan') {
+  steps {
+    container('trivy') {
+      sh '''
+        # Scan and generate JSON (fail on CRITICAL)
+        trivy image \
+          --severity CRITICAL \
+          --exit-code 1 \
+          --no-progress \
+          --format json \
+          --output trivy-report.json \
+          $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+        # Convert JSON to HTML report
+        trivy convert \
+          --format template \
+          --template "@builtin/html.tpl" \
+          --output trivy-report.html \
+          trivy-report.json
+      '''
         }
       }
     }
