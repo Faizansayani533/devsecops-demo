@@ -48,6 +48,18 @@ pipeline {
       }
     }
 
+	stage('KANIKO-SHELL-TEST') {
+  steps {
+    container('kaniko') {
+      sh 'echo "I am inside kaniko container"'
+      sh 'ls -l /'
+      sh 'ls -l /kaniko'
+      sh 'ls -l /workspace'
+    }
+  }
+}
+
+
     stage('Build & Push Image (Kaniko → ECR)') {
       steps {
         container('kaniko') {
