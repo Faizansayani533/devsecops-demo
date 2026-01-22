@@ -1,5 +1,10 @@
 pipeline {
-  agent { label 'kaniko' }
+  agent {
+    kubernetes {
+      label 'kaniko'
+      defaultContainer 'jnlp'
+    }
+  }
 
   tools {
     maven 'Maven'
@@ -7,8 +12,8 @@ pipeline {
 
   environment {
     AWS_REGION = "eu-north-1"
-    ECR_REPO = "079662785620.dkr.ecr.eu-north-1.amazonaws.com/devsecops-app"
-    IMAGE_TAG = "${BUILD_NUMBER}"
+    ECR_REPO   = "079662785620.dkr.ecr.eu-north-1.amazonaws.com/devsecops-app"
+    IMAGE_TAG  = "${BUILD_NUMBER}"
   }
 
   stages {
@@ -19,19 +24,20 @@ pipeline {
       }
     }
 
-    stage('Build') {
+    stage('Build & Unit Test') {
       steps {
-        sh 'mvn clean package -DskipTests'
+        sh 'mvn clean package'
       }
     }
 
-    stage('SonarQube Analysis') {
+    stage('SonarQube Analysis (SAST)') {
       steps {
         withSonarQubeEnv('sonarqube') {
           sh '''
-          mvn sonar:sonar \
-          -Dsonar.projectKey=devsecops-demo \
-          -Dsonar.projectName=devsecops-demo
+            mvn sonar:sonar \
+            -Dsonar.projectKey=devsecops-demo \
+            -Dsonar.projectName=devsecops-demo \
+            -Dsonar.scm.disabled=true
           '''
         }
       }
@@ -39,37 +45,49 @@ pipeline {
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 10, unit: 'MINUTES') {
+        timeout(time: 15, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
       }
     }
 
-    stage('Kaniko Build & Push') {
+    stage('OWASP Dependency Check (SCA)') {
+      steps {
+        dependencyCheck additionalArguments: '--scan .', odcInstallation: 'Default'
+        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+      }
+    }
+
+    stage('Kaniko Build & Push (ECR)') {
       steps {
         container('kaniko') {
-          sh """
-          /kaniko/executor \
-            --dockerfile=Dockerfile \
-            --context=dir:///home/jenkins/agent/workspace/${JOB_NAME} \
-            --destination=$ECR_REPO:$IMAGE_TAG \
-            --destination=$ECR_REPO:latest
-          """
+          sh '''
+            /kaniko/executor \
+              --context `pwd` \
+              --dockerfile Dockerfile \
+              --destination=$ECR_REPO:$IMAGE_TAG \
+              --destination=$ECR_REPO:latest \
+              --skip-tls-verify \
+              --cache=true
+          '''
         }
       }
     }
 
-    stage('Trivy Scan (ECR Image)') {
+    stage('Trivy Image Scan') {
       steps {
         sh '''
-        trivy image --exit-code 0 --severity HIGH,CRITICAL $ECR_REPO:$IMAGE_TAG
+          trivy image --exit-code 1 --severity CRITICAL,HIGH $ECR_REPO:$IMAGE_TAG
         '''
       }
     }
 
     stage('Deploy to EKS') {
       steps {
-        sh 'kubectl apply -f k8s/'
+        sh '''
+          sed -i "s|IMAGE_PLACEHOLDER|$ECR_REPO:$IMAGE_TAG|g" k8s/petclinic.yml
+          kubectl apply -f k8s/
+        '''
       }
     }
   }
@@ -79,7 +97,7 @@ pipeline {
       echo "✅ DevSecOps Pipeline Completed Successfully"
     }
     failure {
-      echo "❌ Pipeline Failed"
+      echo "❌ Pipeline Failed – Check Jenkins Logs"
     }
   }
 }
