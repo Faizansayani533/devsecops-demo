@@ -47,20 +47,10 @@ pipeline {
       }
     }
 
-    stage('Kaniko Build & Push') {
+    stage('Kaniko Build & Push (ECR)') {
       steps {
         container('kaniko') {
           sh '''
-            mkdir -p /kaniko/.docker
-
-            cat <<EOF > /kaniko/.docker/config.json
-            {
-              "credHelpers": {
-                "079662785620.dkr.ecr.eu-north-1.amazonaws.com": "ecr-login"
-              }
-            }
-EOF
-
             /kaniko/executor \
               --context $WORKSPACE \
               --dockerfile $WORKSPACE/Dockerfile \
@@ -84,7 +74,11 @@ EOF
   }
 
   post {
-    success { echo "✅ PIPELINE SUCCESSFUL" }
-    failure { echo "❌ PIPELINE FAILED" }
+    success {
+      echo "✅ PIPELINE SUCCESSFUL"
+    }
+    failure {
+      echo "❌ PIPELINE FAILED"
+    }
   }
 }
