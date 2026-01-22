@@ -52,8 +52,8 @@ pipeline {
         container('kaniko') {
           sh '''
             /kaniko/executor \
-              --context $WORKSPACE \
-              --dockerfile $WORKSPACE/Dockerfile \
+              --context . \
+              --dockerfile Dockerfile \
               --destination $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
               --destination $ECR_REGISTRY/$IMAGE_NAME:latest
           '''
