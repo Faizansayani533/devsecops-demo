@@ -13,7 +13,7 @@ pipeline {
 
     stage('Checkout') {
       steps {
-        git branch: 'main', url: 'https://github.com/Faizansayani533/devsecops-demo.git'
+        checkout scm
       }
     }
 
@@ -61,17 +61,34 @@ pipeline {
       }
     }
 
-stage('Deploy to EKS') {
-  steps {
-    container('kubectl') {
-      sh '''
-        kubectl set image deployment/devsecops-demo \
-          devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
-          -n default
+    stage('Install kubectl') {
+      steps {
+        sh '''
+          if ! command -v kubectl >/dev/null 2>&1; then
+            echo "Installing kubectl..."
+            curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
+            chmod +x kubectl
+            mkdir -p $HOME/bin
+            mv kubectl $HOME/bin/
+            export PATH=$HOME/bin:$PATH
+          fi
 
-        kubectl rollout status deployment/devsecops-demo -n default --timeout=120s
-      '''
-        }
+          kubectl version --client
+        '''
+      }
+    }
+
+    stage('Deploy to EKS') {
+      steps {
+        sh '''
+          echo "Updating deployment..."
+          kubectl set image deployment/devsecops-demo \
+            devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
+            -n default
+
+          echo "Waiting for rollout..."
+          kubectl rollout status deployment/devsecops-demo -n default --timeout=120s
+        '''
       }
     }
   }
