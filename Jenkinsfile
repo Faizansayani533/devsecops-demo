@@ -64,15 +64,8 @@ pipeline {
     stage('Deploy to EKS') {
       steps {
         container('kubectl') {
-          sh '''
-		set -x
-        	which kubectl
-        	kubectl version --client
-        	kubectl get nodes
-        	kubectl get deployment -A
-        	kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-        	kubectl rollout status deployment/devsecops-demo --timeout=120s
-          '''
+		sh 'echo HELLO_FROM_KUBECTL'
+      		sh 'kubectl get nodes'
         }
       }
     }
