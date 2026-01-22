@@ -59,9 +59,9 @@ pipeline {
 
               /usr/share/dependency-check/bin/dependency-check.sh \
                 --project "devsecops-demo" \
-                --scan . \
+                --scan src \
                 --format HTML \
-                --out dc-report \
+                --out /tmp/dc-report \
                 --disableAssembly \
                 --nvdApiKey $NVD_API_KEY \
                 --failOnCVSS 9
@@ -156,7 +156,7 @@ pipeline {
         allowMissing: false,
         alwaysLinkToLastBuild: true,
         keepAll: true,
-        reportDir: 'dc-report',
+        reportDir: '/tmp/dc-report',
         reportFiles: 'dependency-check-report.html',
         reportName: 'OWASP Dependency Check Report'
       ])
