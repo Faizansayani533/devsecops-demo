@@ -75,7 +75,7 @@ stage('Deploy to EKS') {
 
         echo "⏳ Waiting for rollout..."
         kubectl rollout status deployment/devsecops-demo -n default
-      '''~
+      '''
         }
       }
     }
