@@ -13,25 +13,29 @@ pipeline {
 
     stage('Checkout Code') {
       steps {
-        git url: 'https://github.com/Faizansayani533/devsecops-demo.git', branch: 'main'
+        checkout scm
       }
     }
 
     stage('Maven Build & Test') {
       steps {
-        sh "mvn clean verify"
+        container('maven') {
+          sh 'mvn -v'
+          sh 'mvn clean verify'
+        }
       }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv("${SONARQUBE}") {
-          sh """
-          mvn sonar:sonar \
-          -Dsonar.projectKey=devsecops-demo \
-          -Dsonar.projectName=devsecops-demo \
-          -Dsonar.login=$SONAR_AUTH_TOKEN
-          """
+        container('maven') {
+          withSonarQubeEnv("${SONARQUBE}") {
+            sh """
+              mvn sonar:sonar \
+              -Dsonar.projectKey=devsecops-demo \
+              -Dsonar.projectName=devsecops-demo
+            """
+          }
         }
       }
     }
@@ -77,10 +81,10 @@ EOF
 
     stage('Deploy to EKS') {
       steps {
-        sh """
-        kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-        kubectl rollout status deployment/devsecops-demo
-        """
+        sh '''
+          kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+          kubectl rollout status deployment/devsecops-demo
+        '''
       }
     }
   }
