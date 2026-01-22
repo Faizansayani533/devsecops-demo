@@ -34,7 +34,6 @@ pipeline {
           mvn sonar:sonar \
           -Dsonar.projectKey=devsecops-demo \
           -Dsonar.projectName=devsecops-demo \
-          -Dsonar.host.url=$SONAR_HOST_URL \
           -Dsonar.login=$SONAR_AUTH_TOKEN
           """
         }
@@ -49,20 +48,12 @@ pipeline {
       }
     }
 
-    /* ========== OPTIONAL (NVD ERROR AATA HAI ISLIYE OFF) ==========
-    stage('OWASP Dependency Check') {
-      steps {
-        dependencyCheck additionalArguments: '--scan .', odcInstallation: 'Default'
-        dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
-      }
-    }
-    ================================================================ */
-
     stage('Build & Push Image (Kaniko → ECR)') {
       steps {
         container('kaniko') {
           sh '''
-            echo "Configuring ECR auth..."
+            echo "Setting ECR auth..."
+
             mkdir -p /kaniko/.docker
 
             cat <<EOF > /kaniko/.docker/config.json
@@ -72,8 +63,6 @@ pipeline {
               }
             }
 EOF
-
-            echo "Building & pushing image..."
 
             /kaniko/executor \
               --context $WORKSPACE \
@@ -88,17 +77,15 @@ EOF
 
     stage('Trivy Image Scan') {
       steps {
-        sh """
-        trivy image $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG || true
-        """
+        sh "trivy image $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG || true"
       }
     }
 
     stage('Deploy to EKS') {
       steps {
         sh """
-        kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG -n default
-        kubectl rollout status deployment/devsecops-demo -n default
+        kubectl set image deployment/devsecops-demo devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        kubectl rollout status deployment/devsecops-demo
         """
       }
     }
@@ -106,10 +93,10 @@ EOF
 
   post {
     success {
-      echo "✅ PIPELINE SUCCESSFUL – APP DEPLOYED"
+      echo "✅ PIPELINE SUCCESSFUL"
     }
     failure {
-      echo "❌ PIPELINE FAILED – CHECK LOGS"
+      echo "❌ PIPELINE FAILED"
     }
   }
 }
