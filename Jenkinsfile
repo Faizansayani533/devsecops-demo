@@ -21,7 +21,7 @@ pipeline {
     stage('Maven Build & Test') {
       steps {
         container('maven') {
-         sh 'mvn clean package -DskipTests -Dcheckstyle.skip=true'
+         sh 'mvn clean package -DskipTests=false -Dcheckstyle.skip=true -Dnohttp.skip=true'
         }
       }
     }
