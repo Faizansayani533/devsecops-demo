@@ -12,18 +12,12 @@ pipeline {
 
   stages {
 
-    // =========================
-    // CHECKOUT SOURCE
-    // =========================
-    stage('Checkout Source Code') {
+    stage('Checkout Source') {
       steps {
         checkout scm
       }
     }
 
-    // =========================
-    // BUILD & TEST
-    // =========================
     stage('Maven Build & Test') {
       steps {
         container('maven') {
@@ -32,9 +26,6 @@ pipeline {
       }
     }
 
-    // =========================
-    // SONARQUBE (SAST)
-    // =========================
     stage('SonarQube Analysis') {
       steps {
         container('maven') {
@@ -57,34 +48,61 @@ pipeline {
       }
     }
 
-    // =========================
-    // OWASP DEPENDENCY CHECK
-    // =========================
+    // ---------------------------
+    // DOWNLOAD ODC DATABASE (ONCE PER POD)
+    // ---------------------------
+    stage('Prepare Dependency-Check DB') {
+      steps {
+        container('dependency-check') {
+          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+            sh '''
+              echo "📥 Preparing Dependency-Check DB..."
+
+              if [ ! -d "/odc-data/nvdcve" ]; then
+                echo "First time DB download..."
+                dependency-check.sh \
+                  --updateonly \
+                  --data /odc-data \
+                  --nvdApiKey $NVD_API_KEY
+              else
+                echo "Using existing offline DB"
+              fi
+            '''
+          }
+        }
+      }
+    }
+
+    // ---------------------------
+    // OWASP SCAN (OFFLINE MODE)
+    // ---------------------------
     stage('OWASP Dependency Check') {
       steps {
         container('dependency-check') {
           sh '''
             echo "🔍 OWASP Dependency Check (OFFLINE DB MODE)"
 
-            mkdir -p dc-report
+            rm -rf dc-report
+            mkdir dc-report
 
-            /usr/share/dependency-check/bin/dependency-check.sh \
+            dependency-check.sh \
               --project "devsecops-demo" \
               --scan target \
               --scan pom.xml \
               --format HTML \
               --out dc-report \
               --disableAssembly \
-              --data odc-data \
+              --data /odc-data \
+              --noupdate \
               --failOnCVSS 9
           '''
         }
       }
     }
 
-    // =========================
+    // ---------------------------
     // BUILD & PUSH IMAGE
-    // =========================
+    // ---------------------------
     stage('Build & Push Image (Kaniko)') {
       steps {
         container('kaniko') {
@@ -99,15 +117,13 @@ pipeline {
       }
     }
 
-    // =========================
+    // ---------------------------
     // TRIVY IMAGE SCAN
-    // =========================
+    // ---------------------------
     stage('Trivy Image Scan (CRITICAL Gate)') {
       steps {
         container('trivy') {
           sh '''
-            echo "🔍 Trivy CRITICAL image scan..."
-
             trivy image \
               --scanners vuln \
               --severity CRITICAL \
@@ -119,15 +135,13 @@ pipeline {
       }
     }
 
-    // =========================
+    // ---------------------------
     // UPDATE GITOPS REPO
-    // =========================
+    // ---------------------------
     stage('Update GitOps Repo') {
       steps {
         withCredentials([string(credentialsId: 'gitops-token', variable: 'GIT_TOKEN')]) {
           sh '''
-            echo "🚀 Updating GitOps repo..."
-
             rm -rf gitops
             git clone https://$GIT_TOKEN@github.com/Faizansayani533/devsecops-gitops.git gitops
 
@@ -147,9 +161,6 @@ pipeline {
     }
   }
 
-  // =========================
-  // REPORT PUBLISH
-  // =========================
   post {
     always {
       publishHTML([
@@ -163,11 +174,11 @@ pipeline {
     }
 
     success {
-      echo "✅ CI PASSED — ArgoCD will auto-deploy"
+      echo "✅ CI PASSED — Argo CD will deploy automatically"
     }
 
     failure {
-      echo "❌ PIPELINE FAILED — Security or quality gate blocked"
+      echo "❌ PIPELINE FAILED — Security gate or quality gate blocked"
     }
   }
 }
