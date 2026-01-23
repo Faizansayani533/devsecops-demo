@@ -56,19 +56,30 @@ stage('OWASP Dependency Check') {
     container('dependency-check') {
       withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
         sh '''
-          echo "🔍 Running OWASP Dependency Check with NVD API key..."
+          echo "🔍 Preparing Dependency-Check DB..."
 
-          rm -rf /tmp/dc-report
-          mkdir -p /tmp/dc-report
+          mkdir -p odc-data dc-report
 
+          if [ ! -d "odc-data/nvdcve" ]; then
+            echo "⬇ First time DB download..."
+            /usr/share/dependency-check/bin/dependency-check.sh \
+              --updateonly \
+              --data odc-data \
+              --nvdApiKey $NVD_API_KEY
+          else
+            echo "✅ Using existing offline DB"
+          fi
+
+          echo "🔎 Running scan..."
           /usr/share/dependency-check/bin/dependency-check.sh \
             --project "devsecops-demo" \
             --scan target \
             --scan pom.xml \
             --format HTML \
-            --out /tmp/dc-report \
+            --out dc-report \
             --disableAssembly \
-            --nvdApiKey $NVD_API_KEY \
+            --data odc-data \
+            --noupdate \
             --failOnCVSS 9
         '''
       }
