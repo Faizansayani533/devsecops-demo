@@ -51,54 +51,54 @@ pipeline {
     // ---------------------------
     // DOWNLOAD ODC DATABASE (ONCE PER POD)
     // ---------------------------
-    stage('Prepare Dependency-Check DB') {
-      steps {
-        container('dependency-check') {
-          withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-            sh '''
-              echo "📥 Preparing Dependency-Check DB..."
+stage('Prepare Dependency-Check DB') {
+  steps {
+    container('dependency-check') {
+      withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+        sh '''
+          echo "📥 Preparing Dependency-Check DB..."
 
-              if [ ! -d "/odc-data/nvdcve" ]; then
-                echo "First time DB download..."
-                dependency-check.sh \
-                  --updateonly \
-                  --data /odc-data \
-                  --nvdApiKey $NVD_API_KEY
-              else
-                echo "Using existing offline DB"
-              fi
-            '''
-          }
-        }
+          if [ ! -d "/odc-data/nvdcve" ]; then
+            echo "First time DB download..."
+            /usr/share/dependency-check/bin/dependency-check.sh \
+              --updateonly \
+              --data /odc-data \
+              --nvdApiKey $NVD_API_KEY
+          else
+            echo "Using existing offline DB"
+          fi
+        '''
       }
     }
+  }
+}
 
     // ---------------------------
     // OWASP SCAN (OFFLINE MODE)
     // ---------------------------
-    stage('OWASP Dependency Check') {
-      steps {
-        container('dependency-check') {
-          sh '''
-            echo "🔍 OWASP Dependency Check (OFFLINE DB MODE)"
+stage('OWASP Dependency Check') {
+  steps {
+    container('dependency-check') {
+      sh '''
+        echo "🔍 OWASP Dependency Check (OFFLINE DB MODE)"
 
-            rm -rf dc-report
-            mkdir dc-report
+        rm -rf dc-report
+        mkdir dc-report
 
-            dependency-check.sh \
-              --project "devsecops-demo" \
-              --scan target \
-              --scan pom.xml \
-              --format HTML \
-              --out dc-report \
-              --disableAssembly \
-              --data /odc-data \
-              --noupdate \
-              --failOnCVSS 9
-          '''
-        }
-      }
+        /usr/share/dependency-check/bin/dependency-check.sh \
+          --project "devsecops-demo" \
+          --scan target \
+          --scan pom.xml \
+          --format HTML \
+          --out dc-report \
+          --disableAssembly \
+          --data /odc-data \
+          --noupdate \
+          --failOnCVSS 9
+      '''
     }
+  }
+}
 
     // ---------------------------
     // BUILD & PUSH IMAGE
