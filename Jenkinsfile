@@ -7,11 +7,12 @@ pipeline {
     IMAGE_NAME   = "devsecops-app"
     IMAGE_TAG    = "${BUILD_NUMBER}"
     SONARQUBE    = "sonarqube"
+    GITOPS_REPO  = "https://github.com/Faizansayani533/devsecops-gitops.git"
   }
 
   stages {
 
-    stage('Checkout') {
+    stage('Checkout Source Code') {
       steps {
         checkout scm
       }
@@ -20,7 +21,7 @@ pipeline {
     stage('Maven Build & Test') {
       steps {
         container('maven') {
-          sh 'mvn clean verify'
+          sh 'mvn clean verify -DskipTests=false'
         }
       }
     }
@@ -47,16 +48,12 @@ pipeline {
       }
     }
 
-    // =======================
-    // OWASP DEPENDENCY CHECK
-    // =======================
     stage('OWASP Dependency Check') {
       steps {
         container('dependency-check') {
           withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
             sh '''
-              rm -rf /tmp/dc-report
-              mkdir -p /tmp/dc-report
+              rm -rf /tmp/dc-report && mkdir -p /tmp/dc-report
 
               /usr/share/dependency-check/bin/dependency-check.sh \
                 --project "devsecops-demo" \
@@ -73,10 +70,7 @@ pipeline {
       }
     }
 
-    // =======================
-    // BUILD & PUSH IMAGE
-    // =======================
-    stage('Kaniko Build & Push (ECR)') {
+    stage('Build & Push Image (Kaniko)') {
       steps {
         container('kaniko') {
           sh '''
@@ -90,89 +84,62 @@ pipeline {
       }
     }
 
-    // =======================
-    // TRIVY IMAGE SCAN
-    // =======================
-
-stage('Trivy Image Scan') {
-  steps {
-    container('trivy') {
-      sh '''
-        echo "🔍 Trivy CRITICAL vulnerability scan..."
-
-        trivy image \
-          --scanners vuln \
-          --severity CRITICAL \
-          --exit-code 1 \
-          --no-progress \
-          --format template \
-          --template "@trivy-html.tpl" \
-          --output trivy-report.html \
-          $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-      '''        }
+    stage('Trivy Image Scan') {
+      steps {
+        container('trivy') {
+          sh '''
+            trivy image \
+              --scanners vuln \
+              --severity CRITICAL \
+              --exit-code 1 \
+              --no-progress \
+              $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+          '''
+        }
       }
     }
 
-    // =======================
-    // INSTALL KUBECTL
-    // =======================
-    stage('Install kubectl') {
+    stage('Update GitOps Repo') {
       steps {
-        sh '''
-          if [ ! -f /home/jenkins/bin/kubectl ]; then
-            curl -LO https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl
-            chmod +x kubectl
-            mkdir -p /home/jenkins/bin
-            mv kubectl /home/jenkins/bin/
-          fi
+        withCredentials([string(credentialsId: 'gitops-token', variable: 'GIT_TOKEN')]) {
+          sh '''
+            rm -rf gitops
+            git clone https://$GIT_TOKEN@github.com/Faizansayani533/devsecops-gitops.git gitops
 
-          /home/jenkins/bin/kubectl version --client
-        '''
+            cd gitops/petclinic
+
+            sed -i "s|image: .*|image: $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG|g" deployment.yaml
+
+            git config user.email "jenkins@devsecops.com"
+            git config user.name "jenkins"
+
+            git add deployment.yaml
+            git commit -m "Update image to $IMAGE_TAG"
+            git push origin main
+          '''
+        }
       }
     }
+  }
 
-    // =======================
-    // DEPLOY TO EKS
-    // =======================
-    stage('Deploy to EKS') {
-      steps {
-        sh '''
-          echo "Updating deployment..."
-
-          /home/jenkins/bin/kubectl set image deployment/devsecops-demo \
-            devsecops-demo=$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
-            -n default
-
-          /home/jenkins/bin/kubectl rollout status deployment/devsecops-demo \
-            -n default --timeout=180s
-        '''
-      }
+  post {
+    always {
+      publishHTML([
+        allowMissing: true,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: '/tmp/dc-report',
+        reportFiles: 'dependency-check-report.html',
+        reportName: 'OWASP Dependency Check Report'
+      ])
     }
 
-    // =======================
-    // PUBLISH REPORTS
-    // =======================
-    stage('Publish Security Reports') {
-      steps {
+    success {
+      echo "✅ CI SUCCESSFUL — Argo CD will deploy automatically"
+    }
 
-        publishHTML([
-          allowMissing: true,
-          alwaysLinkToLastBuild: true,
-          keepAll: true,
-          reportDir: '/tmp/dc-report',
-          reportFiles: 'dependency-check-report.html',
-          reportName: 'OWASP Dependency Check Report'
-        ])
-
-        publishHTML([
-          allowMissing: true,
-          alwaysLinkToLastBuild: true,
-          keepAll: true,
-          reportDir: '.',
-          reportFiles: 'trivy-report.html',
-          reportName: 'Trivy Image Scan Report'
-        ])
-      }
+    failure {
+      echo "❌ PIPELINE FAILED — Security gate or build failed"
     }
   }
 }
