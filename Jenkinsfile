@@ -12,12 +12,18 @@ pipeline {
 
   stages {
 
+    // =========================
+    // CHECKOUT SOURCE
+    // =========================
     stage('Checkout Source Code') {
       steps {
         checkout scm
       }
     }
 
+    // =========================
+    // BUILD & TEST
+    // =========================
     stage('Maven Build & Test') {
       steps {
         container('maven') {
@@ -26,6 +32,9 @@ pipeline {
       }
     }
 
+    // =========================
+    // SONARQUBE (SAST)
+    // =========================
     stage('SonarQube Analysis') {
       steps {
         container('maven') {
@@ -51,41 +60,28 @@ pipeline {
     // =========================
     // OWASP DEPENDENCY CHECK
     // =========================
-stage('OWASP Dependency Check') {
-  steps {
-    container('dependency-check') {
-      withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-        sh '''
-          echo "🔍 Preparing Dependency-Check DB..."
+    stage('OWASP Dependency Check') {
+      steps {
+        container('dependency-check') {
+          sh '''
+            echo "🔍 OWASP Dependency Check (OFFLINE DB MODE)"
 
-          mkdir -p odc-data dc-report
+            mkdir -p dc-report
 
-          if [ ! -d "odc-data/nvdcve" ]; then
-            echo "⬇ First time DB download..."
             /usr/share/dependency-check/bin/dependency-check.sh \
-              --updateonly \
+              --project "devsecops-demo" \
+              --scan target \
+              --scan pom.xml \
+              --format HTML \
+              --out dc-report \
+              --disableAssembly \
               --data odc-data \
-              --nvdApiKey $NVD_API_KEY
-          else
-            echo "✅ Using existing offline DB"
-          fi
-
-          echo "🔎 Running scan..."
-          /usr/share/dependency-check/bin/dependency-check.sh \
-            --project "devsecops-demo" \
-            --scan target \
-            --scan pom.xml \
-            --format HTML \
-            --out dc-report \
-            --disableAssembly \
-            --data odc-data \
-            --noupdate \
-            --failOnCVSS 9
-        '''
+              --noupdate \
+              --failOnCVSS 9
+          '''
+        }
       }
     }
-  }
-}
 
     // =========================
     // BUILD & PUSH IMAGE
@@ -107,11 +103,11 @@ stage('OWASP Dependency Check') {
     // =========================
     // TRIVY IMAGE SCAN
     // =========================
-    stage('Trivy Image Scan') {
+    stage('Trivy Image Scan (CRITICAL Gate)') {
       steps {
         container('trivy') {
           sh '''
-            echo "🔍 Trivy CRITICAL scan..."
+            echo "🔍 Trivy CRITICAL image scan..."
 
             trivy image \
               --scanners vuln \
@@ -131,6 +127,8 @@ stage('OWASP Dependency Check') {
       steps {
         withCredentials([string(credentialsId: 'gitops-token', variable: 'GIT_TOKEN')]) {
           sh '''
+            echo "🚀 Updating GitOps repo..."
+
             rm -rf gitops
             git clone https://$GIT_TOKEN@github.com/Faizansayani533/devsecops-gitops.git gitops
 
@@ -159,18 +157,18 @@ stage('OWASP Dependency Check') {
         allowMissing: true,
         alwaysLinkToLastBuild: true,
         keepAll: true,
-        reportDir: '/tmp/dc-report',
+        reportDir: 'dc-report',
         reportFiles: 'dependency-check-report.html',
         reportName: 'OWASP Dependency Check Report'
       ])
     }
 
     success {
-      echo "✅ CI SUCCESSFUL — Argo CD will deploy automatically"
+      echo "✅ CI PASSED — ArgoCD will auto-deploy"
     }
 
     failure {
-      echo "❌ PIPELINE FAILED — Security gate or build failed"
+      echo "❌ PIPELINE FAILED — Security or quality gate blocked"
     }
   }
 }
