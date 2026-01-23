@@ -51,27 +51,30 @@ pipeline {
     // =========================
     // OWASP DEPENDENCY CHECK
     // =========================
-    stage('OWASP Dependency Check') {
-      steps {
-        container('dependency-check') {
-          sh '''
-            echo "🔍 Running OWASP Dependency Check (OFFLINE MODE)..."
+stage('OWASP Dependency Check') {
+  steps {
+    container('dependency-check') {
+      withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+        sh '''
+          echo "🔍 Running OWASP Dependency Check with NVD API key..."
 
-            rm -rf /tmp/dc-report
-            mkdir -p /tmp/dc-report
+          rm -rf /tmp/dc-report
+          mkdir -p /tmp/dc-report
 
-            /usr/share/dependency-check/bin/dependency-check.sh \
-              --project "devsecops-demo" \
-              --scan target \
-              --scan pom.xml \
-              --format HTML \
-              --out /tmp/dc-report \
-              --disableAssembly \
-              --failOnCVSS 9
-          '''
-        }
+          /usr/share/dependency-check/bin/dependency-check.sh \
+            --project "devsecops-demo" \
+            --scan target \
+            --scan pom.xml \
+            --format HTML \
+            --out /tmp/dc-report \
+            --disableAssembly \
+            --nvdApiKey $NVD_API_KEY \
+            --failOnCVSS 9
+        '''
       }
     }
+  }
+}
 
     // =========================
     // BUILD & PUSH IMAGE
