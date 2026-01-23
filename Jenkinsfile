@@ -21,7 +21,7 @@ pipeline {
     stage('Maven Build & Test') {
       steps {
         container('maven') {
-          sh 'mvn clean verify -DskipTests=false'
+          sh 'mvn clean verify'
         }
       }
     }
@@ -48,30 +48,35 @@ pipeline {
       }
     }
 
-stage('OWASP Dependency Check') {
-  steps {
-    container('dependency-check') {
-      sh '''
-        echo "🔍 Running OWASP Dependency Check (OFFLINE MODE)..."
+    // =========================
+    // OWASP DEPENDENCY CHECK
+    // =========================
+    stage('OWASP Dependency Check') {
+      steps {
+        container('dependency-check') {
+          sh '''
+            echo "🔍 Running OWASP Dependency Check (OFFLINE MODE)..."
 
-        rm -rf /tmp/dc-report
-        mkdir -p /tmp/dc-report
+            rm -rf /tmp/dc-report
+            mkdir -p /tmp/dc-report
 
-        /usr/share/dependency-check/bin/dependency-check.sh \
-          --project "devsecops-demo" \
-          --scan target \
-          --scan pom.xml \
-          --format HTML \
-          --out /tmp/dc-report \
-          --disableAssembly \
-          --noupdate \
-          --failOnCVSS 9
-      '''
-          }
+            /usr/share/dependency-check/bin/dependency-check.sh \
+              --project "devsecops-demo" \
+              --scan target \
+              --scan pom.xml \
+              --format HTML \
+              --out /tmp/dc-report \
+              --disableAssembly \
+              --noupdate \
+              --failOnCVSS 9
+          '''
         }
       }
     }
 
+    // =========================
+    // BUILD & PUSH IMAGE
+    // =========================
     stage('Build & Push Image (Kaniko)') {
       steps {
         container('kaniko') {
@@ -86,10 +91,15 @@ stage('OWASP Dependency Check') {
       }
     }
 
+    // =========================
+    // TRIVY IMAGE SCAN
+    // =========================
     stage('Trivy Image Scan') {
       steps {
         container('trivy') {
           sh '''
+            echo "🔍 Trivy CRITICAL scan..."
+
             trivy image \
               --scanners vuln \
               --severity CRITICAL \
@@ -101,6 +111,9 @@ stage('OWASP Dependency Check') {
       }
     }
 
+    // =========================
+    // UPDATE GITOPS REPO
+    // =========================
     stage('Update GitOps Repo') {
       steps {
         withCredentials([string(credentialsId: 'gitops-token', variable: 'GIT_TOKEN')]) {
@@ -124,6 +137,9 @@ stage('OWASP Dependency Check') {
     }
   }
 
+  // =========================
+  // REPORT PUBLISH
+  // =========================
   post {
     always {
       publishHTML([
