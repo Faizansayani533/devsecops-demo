@@ -8,4 +8,7 @@
 	<suppress files="build[\\/].*" checks=".*"/>
 	<suppress files="target[\\/].*" checks=".*"/>
 	<suppress files=".+\.(jar|git|ico|p12|gif|jks|jpg|svg|log)" checks="NoHttp"/>
+	 <suppress
+        checks="io.spring.nohttp.checkstyle.check.NoHttpCheck"
+        files=".*dc-report.*"/>
 </suppressions>
