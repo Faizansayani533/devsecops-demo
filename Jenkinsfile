@@ -67,7 +67,6 @@ pipeline {
               --format HTML \
               --out /tmp/dc-report \
               --disableAssembly \
-              --noupdate \
               --failOnCVSS 9
           '''
         }
