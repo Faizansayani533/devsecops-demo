@@ -7,4 +7,12 @@
 	<module name="SuppressionFilter">
 		<property name="file" value="${config_loc}/nohttp-checkstyle-suppressions.xml"/>
 	</module>
+	<suppressions>
+
+    <!-- Ignore OWASP Dependency Check reports -->
+    <suppress
+        checks="io.spring.nohttp.checkstyle.check.NoHttpCheck"
+        files=".*dc-report.*"/>
+
+</suppressions>
 </module>
