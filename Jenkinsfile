@@ -76,7 +76,6 @@ pipeline {
               --out dc-report \
               --disableAssembly \
               --data odc-data \
-              --noupdate \
               --failOnCVSS 9
           '''
         }
